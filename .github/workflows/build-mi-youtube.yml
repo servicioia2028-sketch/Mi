@@ -3,6 +3,8 @@ name: Compilar Mi YouTube 1.1.0
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -45,7 +47,6 @@ jobs:
           s = s.replace('applicationIdSuffix = ".debug.$normalizedWorkingBranch"', 'applicationIdSuffix = ""')
           p.write_text(s, encoding='utf-8')
 
-          # Identificacion visible del fork y su licencia/origen.
           notice = Path('MiYouTube-src/MI-YOUTUBE-NOTICE.txt')
           notice.write_text(
               'Mi YouTube 1.1.0\n'
