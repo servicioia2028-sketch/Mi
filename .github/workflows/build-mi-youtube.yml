@@ -28,11 +28,15 @@ jobs:
       - name: Preparar Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Clonar motor NewPipe estable
+      - name: Clonar NewPipe 0.29.0 y extractor exacto
         run: |
           git clone --depth 1 --branch v0.29.0 https://github.com/TeamNewPipe/NewPipe.git MiYouTube-src
+          git init NewPipeExtractor
+          git -C NewPipeExtractor remote add origin https://github.com/TeamNewPipe/NewPipeExtractor.git
+          git -C NewPipeExtractor fetch --depth 1 origin 4de221bf67ec0bf8dbdf573fbc9d4412a8561cb0
+          git -C NewPipeExtractor checkout --detach FETCH_HEAD
 
-      - name: Personalizar Mi YouTube 1.1.0
+      - name: Personalizar Mi YouTube 1.1.0 y enlazar extractor local
         shell: python
         run: |
           from pathlib import Path
@@ -47,11 +51,22 @@ jobs:
           s = s.replace('applicationIdSuffix = ".debug.$normalizedWorkingBranch"', 'applicationIdSuffix = ""')
           p.write_text(s, encoding='utf-8')
 
+          settings = Path('MiYouTube-src/settings.gradle.kts')
+          st = settings.read_text(encoding='utf-8')
+          local_block = '''\nincludeBuild("../NewPipeExtractor") {\n    dependencySubstitution {\n        substitute(module("com.github.TeamNewPipe:NewPipeExtractor"))\n            .using(project(":extractor"))\n    }\n}\n'''
+          if 'includeBuild("../NewPipeExtractor") {' not in st.replace('//    includeBuild', 'includeBuild'):
+              st += local_block
+          else:
+              # The upstream file contains the same block commented out; append an active copy.
+              st += local_block
+          settings.write_text(st, encoding='utf-8')
+
           notice = Path('MiYouTube-src/MI-YOUTUBE-NOTICE.txt')
           notice.write_text(
               'Mi YouTube 1.1.0\n'
-              'Basado en TeamNewPipe/NewPipe v0.29.0 (GPL-3.0-or-later).\n'
-              'Fuente original: https://github.com/TeamNewPipe/NewPipe\n'
+              'Basado en TeamNewPipe/NewPipe v0.29.0 y NewPipeExtractor commit 4de221bf67ec0bf8dbdf573fbc9d4412a8561cb0.\n'
+              'Licencia GPL-3.0-or-later.\n'
+              'Fuentes originales: https://github.com/TeamNewPipe/NewPipe y https://github.com/TeamNewPipe/NewPipeExtractor\n'
               'No es una aplicacion oficial de YouTube ni de NewPipe.\n',
               encoding='utf-8'
           )
@@ -69,7 +84,7 @@ jobs:
           test -n "$APK"
           cp "$APK" salida/Mi-YouTube-1.1.0.apk
           sha256sum salida/Mi-YouTube-1.1.0.apk > salida/Mi-YouTube-1.1.0.sha256.txt
-          tar --exclude='.git' --exclude='*/build' -czf salida/Mi-YouTube-1.1.0-source.tar.gz -C MiYouTube-src .
+          tar --exclude='.git' --exclude='*/build' -czf salida/Mi-YouTube-1.1.0-source.tar.gz MiYouTube-src NewPipeExtractor README.md
 
       - name: Subir APK
         uses: actions/upload-artifact@v4

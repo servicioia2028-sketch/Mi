@@ -13,3 +13,5 @@ Versión 1.1.0 para Android, basada en el motor libre de NewPipe 0.29.0 para acc
 Esta compilación deriva de TeamNewPipe/NewPipe v0.29.0, software GPL-3.0-or-later. El workflow conserva el origen exacto y genera también un paquete de código fuente correspondiente.
 
 No es una aplicación oficial de YouTube ni de NewPipe.
+
+Compilación solicitada: Mi YouTube 1.1.0.
