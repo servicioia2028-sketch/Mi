@@ -26,6 +26,11 @@ s = s.replace(
     'final int[][] states = new int[][] {\n'
     '                new int[] {android.R.attr.state_selected}, new int[] {}};',
 )
+# BaseFragment#setTitle expects a String, not a string resource id.
+s = s.replace(
+    'setTitle(R.string.app_name);',
+    'setTitle(getString(R.string.app_name));',
+)
 main_fragment.write_text(s, encoding="utf-8")
 
 main_activity = root / "app/src/main/java/org/schabi/newpipe/MainActivity.java"
@@ -44,4 +49,4 @@ g = g.replace(
 )
 gradle_file.write_text(g, encoding="utf-8")
 
-print("Estilo 1.3.0 corregido; Checkstyle no bloquea assembleDebug")
+print("Estilo y compilación Java 1.3.0 corregidos")
