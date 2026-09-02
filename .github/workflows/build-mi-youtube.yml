@@ -1,4 +1,4 @@
-name: Compilar Mi YouTube 1.1.0
+name: Compilar Mi YouTube 1.2.0 Premium
 
 on:
   push:
@@ -36,68 +36,192 @@ jobs:
           git -C NewPipeExtractor fetch --depth 1 origin 4de221bf67ec0bf8dbdf573fbc9d4412a8561cb0
           git -C NewPipeExtractor checkout --detach FETCH_HEAD
 
-      - name: Personalizar Mi YouTube 1.1.0 y enlazar extractor local
+      - name: Aplicar Mi YouTube 1.2.0 Premium
         shell: python
         run: |
           from pathlib import Path
           import re
 
-          p = Path('MiYouTube-src/app/build.gradle.kts')
+          root = Path('MiYouTube-src')
+
+          p = root / 'app/build.gradle.kts'
           s = p.read_text(encoding='utf-8')
           s = s.replace('applicationId = NEWPIPE_APPLICATION_ID_OLD', 'applicationId = "cl.servicioia.miyoutube"')
-          s = s.replace('versionName = NEWPIPE_VERSION_NAME', 'versionName = "1.1.0"')
+          s = s.replace('versionName = NEWPIPE_VERSION_NAME', 'versionName = "1.2.0"')
+          s = re.sub(
+              r'versionCode = System\.getProperty\("versionCodeOverride"\)\?\.toInt\(\) \?: NEWPIPE_VERSION_CODE',
+              'versionCode = System.getProperty("versionCodeOverride")?.toInt() ?: 1200',
+              s,
+          )
           s = re.sub(r'resValue\("string", "app_name", "NewPipe[^\"]*"\)', 'resValue("string", "app_name", "Mi YouTube")', s)
           s = s.replace('applicationIdSuffix = ".debug"', 'applicationIdSuffix = ""')
           s = s.replace('applicationIdSuffix = ".debug.$normalizedWorkingBranch"', 'applicationIdSuffix = ""')
           p.write_text(s, encoding='utf-8')
 
-          settings = Path('MiYouTube-src/settings.gradle.kts')
+          settings = root / 'settings.gradle.kts'
           st = settings.read_text(encoding='utf-8')
           local_block = '''\nincludeBuild("../NewPipeExtractor") {\n    dependencySubstitution {\n        substitute(module("com.github.TeamNewPipe:NewPipeExtractor"))\n            .using(project(":extractor"))\n    }\n}\n'''
-          if 'includeBuild("../NewPipeExtractor") {' not in st.replace('//    includeBuild', 'includeBuild'):
-              st += local_block
-          else:
-              # The upstream file contains the same block commented out; append an active copy.
-              st += local_block
+          st += local_block
           settings.write_text(st, encoding='utf-8')
 
-          notice = Path('MiYouTube-src/MI-YOUTUBE-NOTICE.txt')
+          p = root / 'app/src/main/res/values/colors_services.xml'
+          s = p.read_text(encoding='utf-8')
+          replacements = {
+              '<color name="light_youtube_primary_color">#e53935</color>': '<color name="light_youtube_primary_color">#0F0F0F</color>',
+              '<color name="light_youtube_accent_color">#000000</color>': '<color name="light_youtube_accent_color">#FF0033</color>',
+              '<color name="dark_youtube_primary_color">#992722</color>': '<color name="dark_youtube_primary_color">#0F0F0F</color>',
+              '<color name="dark_youtube_accent_color">#FFFFFF</color>': '<color name="dark_youtube_accent_color">#FF0033</color>',
+          }
+          for old, new in replacements.items():
+              s = s.replace(old, new)
+          p.write_text(s, encoding='utf-8')
+
+          p = root / 'app/src/main/res/values/colors.xml'
+          s = p.read_text(encoding='utf-8')
+          replacements = {
+              '<color name="ic_launcher_background">#CD201F</color>': '<color name="ic_launcher_background">#0F0F0F</color>',
+              '<color name="light_background_color">#EEEEEE</color>': '<color name="light_background_color">#FAFAFA</color>',
+              '<color name="light_dialog_background_color">#EEEEEE</color>': '<color name="light_dialog_background_color">#FFFFFF</color>',
+              '<color name="light_settings_accent_color">#e53935</color>': '<color name="light_settings_accent_color">#FF0033</color>',
+              '<color name="light_card_item_background_color">#F8F8F8</color>': '<color name="light_card_item_background_color">#FFFFFF</color>',
+              '<color name="light_card_item_contrast_color">#E9E9E9</color>': '<color name="light_card_item_contrast_color">#F1F1F1</color>',
+              '<color name="dark_background_color">#222222</color>': '<color name="dark_background_color">#0F0F0F</color>',
+              '<color name="dark_dialog_background_color">#424242</color>': '<color name="dark_dialog_background_color">#181818</color>',
+              '<color name="dark_settings_accent_color">#ff5252</color>': '<color name="dark_settings_accent_color">#FF0033</color>',
+              '<color name="dark_separator_color">#0affffff</color>': '<color name="dark_separator_color">#18FFFFFF</color>',
+              '<color name="dark_contrast_background_color">#1f717171</color>': '<color name="dark_contrast_background_color">#232323</color>',
+              '<color name="dark_card_item_background_color">#313131</color>': '<color name="dark_card_item_background_color">#181818</color>',
+              '<color name="dark_card_item_contrast_color">#474747</color>': '<color name="dark_card_item_contrast_color">#272727</color>',
+              '<color name="dark_border_color">#33FFFFFF</color>': '<color name="dark_border_color">#24FFFFFF</color>',
+              '<color name="black_settings_accent_color">@color/dark_settings_accent_color</color>': '<color name="black_settings_accent_color">#FF0033</color>',
+              '<color name="black_separator_color">#1effffff</color>': '<color name="black_separator_color">#18FFFFFF</color>',
+              '<color name="black_contrast_background_color">#23454545</color>': '<color name="black_contrast_background_color">#1D1D1D</color>',
+              '<color name="black_card_item_background_color">#0F0F0F</color>': '<color name="black_card_item_background_color">#111111</color>',
+              '<color name="black_card_item_contrast_color">#202020</color>': '<color name="black_card_item_contrast_color">#202020</color>',
+              '<color name="black_border_color">#25FFFFFF</color>': '<color name="black_border_color">#20FFFFFF</color>',
+              '<color name="subscribed_background_color">#d6d6d6</color>': '<color name="subscribed_background_color">#2A2A2A</color>',
+              '<color name="subscribed_text_color">#717171</color>': '<color name="subscribed_text_color">#E5E5E5</color>',
+              '<color name="selected_background_color">#96717171</color>': '<color name="selected_background_color">#33FF0033</color>',
+          }
+          for old, new in replacements.items():
+              s = s.replace(old, new)
+          p.write_text(s, encoding='utf-8')
+
+          p = root / 'app/src/main/res/values/settings_keys.xml'
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('<string name="default_theme_value">@string/auto_device_theme_key</string>', '<string name="default_theme_value">@string/black_theme_key</string>')
+          s = s.replace('<string name="default_night_theme_value">@string/dark_theme_key</string>', '<string name="default_night_theme_value">@string/black_theme_key</string>')
+          p.write_text(s, encoding='utf-8')
+
+          p = root / 'app/src/main/res/values/styles.xml'
+          s = p.read_text(encoding='utf-8')
+          s = s.replace(
+              '<item name="colorAccent">@color/dark_youtube_accent_color</item>',
+              '<item name="colorAccent">@color/dark_youtube_accent_color</item>\n        <item name="colorControlActivated">@color/dark_settings_accent_color</item>',
+          )
+          s = s.replace(
+              '<item name="colorAccent">@color/light_youtube_accent_color</item>',
+              '<item name="colorAccent">@color/light_youtube_accent_color</item>\n        <item name="colorControlActivated">@color/light_settings_accent_color</item>',
+          )
+          p.write_text(s, encoding='utf-8')
+
+          drawable = root / 'app/src/main/res/drawable'
+          drawable.mkdir(parents=True, exist_ok=True)
+          launcher = '''<?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp" android:height="108dp"
+              android:viewportWidth="108" android:viewportHeight="108">
+              <path android:fillColor="#0F0F0F" android:pathData="M16,4 L92,4 Q104,4 104,16 L104,92 Q104,104 92,104 L16,104 Q4,104 4,92 L4,16 Q4,4 16,4 Z"/>
+              <path android:fillColor="#FF0033" android:pathData="M20,28 L31,18 L54,35 L77,18 L88,28 L54,50 Z"/>
+              <path android:fillColor="#D8D2CB" android:pathData="M20,28 L54,50 L43,89 L22,75 Z"/>
+              <path android:fillColor="#B7B1AA" android:pathData="M88,28 L54,50 L65,89 L86,75 Z"/>
+              <path android:fillColor="#111111" android:pathData="M54,42 L70,54 L54,73 L38,54 Z"/>
+              <path android:fillColor="#FFFFFF" android:pathData="M49,47 L49,66 L65,56.5 Z"/>
+          </vector>
+          '''
+          (drawable / 'ic_mi_youtube_launcher.xml').write_text(launcher, encoding='utf-8')
+
+          foreground = '''<?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp" android:height="108dp"
+              android:viewportWidth="108" android:viewportHeight="108">
+              <path android:fillColor="#FF0033" android:pathData="M18,29 L31,18 L54,35 L77,18 L90,29 L54,51 Z"/>
+              <path android:fillColor="#D8D2CB" android:pathData="M18,29 L54,51 L43,90 L21,76 Z"/>
+              <path android:fillColor="#B7B1AA" android:pathData="M90,29 L54,51 L65,90 L87,76 Z"/>
+              <path android:fillColor="#111111" android:pathData="M54,42 L70,54 L54,73 L38,54 Z"/>
+              <path android:fillColor="#FFFFFF" android:pathData="M49,47 L49,66 L65,56.5 Z"/>
+          </vector>
+          '''
+          (drawable / 'ic_mi_youtube_foreground.xml').write_text(foreground, encoding='utf-8')
+
+          p = root / 'app/src/main/AndroidManifest.xml'
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('android:icon="@mipmap/ic_launcher"', 'android:icon="@drawable/ic_mi_youtube_launcher"')
+          s = s.replace('android:logo="@mipmap/ic_launcher"', 'android:logo="@drawable/ic_mi_youtube_launcher"')
+          p.write_text(s, encoding='utf-8')
+
+          anydpi = root / 'app/src/main/res/mipmap-anydpi-v26'
+          anydpi.mkdir(parents=True, exist_ok=True)
+          (anydpi / 'ic_launcher.xml').write_text('''<?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/black_background_color" />
+              <foreground android:drawable="@drawable/ic_mi_youtube_foreground" />
+              <monochrome android:drawable="@drawable/ic_mi_youtube_foreground" />
+          </adaptive-icon>
+          ''', encoding='utf-8')
+
+          splash = '''<?xml version="1.0" encoding="utf-8"?>
+          <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+              <item android:drawable="@color/black_background_color"/>
+              <item android:width="112dp" android:height="112dp" android:gravity="center" android:drawable="@drawable/ic_mi_youtube_launcher"/>
+          </layer-list>
+          '''
+          for rel in [
+              'app/src/main/res/drawable/splash_background.xml',
+              'app/src/main/res/drawable-night/splash_background.xml',
+              'app/src/main/res/drawable-v23/splash_background.xml',
+              'app/src/main/res/drawable-night-v23/splash_background.xml',
+          ]:
+              (root / rel).write_text(splash, encoding='utf-8')
+
+          notice = root / 'MI-YOUTUBE-NOTICE.txt'
           notice.write_text(
-              'Mi YouTube 1.1.0\n'
+              'Mi YouTube 1.2.0 Premium\n'
               'Basado en TeamNewPipe/NewPipe v0.29.0 y NewPipeExtractor commit 4de221bf67ec0bf8dbdf573fbc9d4412a8561cb0.\n'
+              'Interfaz personalizada: tema negro/carbon, acentos rojos, tarjetas oscuras e icono Mi YouTube.\n'
               'Licencia GPL-3.0-or-later.\n'
-              'Fuentes originales: https://github.com/TeamNewPipe/NewPipe y https://github.com/TeamNewPipe/NewPipeExtractor\n'
               'No es una aplicacion oficial de YouTube ni de NewPipe.\n',
               encoding='utf-8'
           )
 
-      - name: Compilar APK instalable
+      - name: Compilar APK instalable 1.2.0
         working-directory: MiYouTube-src
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
 
-      - name: Preparar APK y fuente
+      - name: Verificar APK y preparar entrega
         run: |
           mkdir -p salida
           APK=$(find MiYouTube-src/app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           test -n "$APK"
-          cp "$APK" salida/Mi-YouTube-1.1.0.apk
-          sha256sum salida/Mi-YouTube-1.1.0.apk > salida/Mi-YouTube-1.1.0.sha256.txt
-          tar --exclude='.git' --exclude='*/build' -czf salida/Mi-YouTube-1.1.0-source.tar.gz MiYouTube-src NewPipeExtractor README.md
+          cp "$APK" salida/Mi-YouTube-1.2.0.apk
+          unzip -t salida/Mi-YouTube-1.2.0.apk >/dev/null
+          sha256sum salida/Mi-YouTube-1.2.0.apk > salida/Mi-YouTube-1.2.0.sha256.txt
+          tar --exclude='.git' --exclude='*/build' -czf salida/Mi-YouTube-1.2.0-source.tar.gz MiYouTube-src NewPipeExtractor README.md
 
-      - name: Subir APK
+      - name: Subir APK 1.2.0
         uses: actions/upload-artifact@v4
         with:
-          name: Mi-YouTube-1.1.0-APK
+          name: Mi-YouTube-1.2.0-APK
           path: |
-            salida/Mi-YouTube-1.1.0.apk
-            salida/Mi-YouTube-1.1.0.sha256.txt
+            salida/Mi-YouTube-1.2.0.apk
+            salida/Mi-YouTube-1.2.0.sha256.txt
           retention-days: 30
 
-      - name: Subir codigo fuente correspondiente
+      - name: Subir codigo fuente 1.2.0
         uses: actions/upload-artifact@v4
         with:
-          name: Mi-YouTube-1.1.0-source
-          path: salida/Mi-YouTube-1.1.0-source.tar.gz
+          name: Mi-YouTube-1.2.0-source
+          path: salida/Mi-YouTube-1.2.0-source.tar.gz
           retention-days: 30
