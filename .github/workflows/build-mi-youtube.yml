@@ -73,6 +73,9 @@ jobs:
       - name: Aplicar rediseño real Mi YouTube 1.3.0
         run: python scripts/customize_mi_youtube_130.py
 
+      - name: Corregir estilo Java del rediseño
+        run: python scripts/fix_130_checkstyle.py
+
       - name: Validar recursos y modificaciones visuales
         shell: python
         run: |
@@ -114,7 +117,7 @@ jobs:
           unzip -l salida/Mi-YouTube-1.3.0.apk | grep -q 'AndroidManifest.xml'
           unzip -l salida/Mi-YouTube-1.3.0.apk | grep -q 'classes.dex'
           sha256sum salida/Mi-YouTube-1.3.0.apk > salida/Mi-YouTube-1.3.0.sha256.txt
-          tar --exclude='.git' --exclude='*/build' -czf salida/Mi-YouTube-1.3.0-source.tar.gz MiYouTube-src NewPipeExtractor README.md scripts/customize_mi_youtube_130.py
+          tar --exclude='.git' --exclude='*/build' -czf salida/Mi-YouTube-1.3.0-source.tar.gz MiYouTube-src NewPipeExtractor README.md scripts/customize_mi_youtube_130.py scripts/fix_130_checkstyle.py
 
       - name: Subir APK 1.3.0
         uses: actions/upload-artifact@v4
