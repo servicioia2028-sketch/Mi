@@ -1,4 +1,4 @@
-name: Compilar Mi YouTube 1.3.1 Universal
+name: Compilar Mi YouTube 1.3.2 Universal TV Safe Area
 
 on:
   push:
@@ -70,13 +70,13 @@ jobs:
           cs = cs.replace('<color name="dark_youtube_accent_color">#FFFFFF</color>', '<color name="dark_youtube_accent_color">#FF0033</color>')
           colors.write_text(cs, encoding='utf-8')
 
-      - name: Aplicar rediseño Mi YouTube 1.3.1 Universal
-        run: python scripts/customize_mi_youtube_131.py
+      - name: Aplicar rediseño Mi YouTube 1.3.2 TV Safe Area
+        run: python scripts/customize_mi_youtube_132_safe_area.py
 
       - name: Corregir estilo Java del rediseño
         run: python scripts/fix_130_checkstyle.py
 
-      - name: Validar recursos Universal y TV
+      - name: Validar recursos Universal TV Safe Area
         shell: python
         run: |
           from pathlib import Path
@@ -97,22 +97,24 @@ jobs:
           for rel in checks:
               ET.parse(root / rel)
           main = (root / 'app/src/main/java/org/schabi/newpipe/fragments/MainFragment.java').read_text(encoding='utf-8')
-          assert 'premiumSearchButton' in main
           assert 'configureUniversalTvNavigation' in main
-          assert 'KEYCODE_DPAD_CENTER' in main
-          assert 'UI_MODE_TYPE_TELEVISION' in main
+          activity = (root / 'app/src/main/java/org/schabi/newpipe/MainActivity.java').read_text(encoding='utf-8')
+          assert 'applyTelevisionSafeArea' in activity
+          assert 'FEATURE_TOUCHSCREEN' in activity
+          assert '0.055f' in activity
+          assert '0.040f' in activity
+          tv = (root / 'app/src/main/res/layout-television/fragment_main.xml').read_text(encoding='utf-8')
+          assert 'android:paddingStart="56dp"' in tv
           gradle = (root / 'app/build.gradle.kts').read_text(encoding='utf-8')
-          assert 'versionName = "1.3.1"' in gradle
-          assert '1310' in gradle
+          assert 'versionName = "1.3.2"' in gradle
+          assert '1320' in gradle
           assert 'cl.servicioia.miyoutube' in gradle
           manifest = (root / 'app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
           assert 'android.hardware.touchscreen' in manifest
-          assert 'android.software.leanback' in manifest
           assert 'android.intent.category.LEANBACK_LAUNCHER' in manifest
-          assert 'android:required="false"' in manifest
-          print('Validacion Universal 1.3.1 OK: movil + tablet + TV')
+          print('Validacion 1.3.2 OK: Safe Area para TV Box/Android TV')
 
-      - name: Compilar APK instalable 1.3.1
+      - name: Compilar APK instalable 1.3.2
         working-directory: MiYouTube-src
         run: |
           chmod +x gradlew
@@ -123,25 +125,25 @@ jobs:
           mkdir -p salida
           APK=$(find MiYouTube-src/app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           test -n "$APK"
-          cp "$APK" salida/Mi-YouTube-1.3.1-Universal.apk
-          unzip -t salida/Mi-YouTube-1.3.1-Universal.apk >/dev/null
-          unzip -l salida/Mi-YouTube-1.3.1-Universal.apk | grep -q 'AndroidManifest.xml'
-          unzip -l salida/Mi-YouTube-1.3.1-Universal.apk | grep -q 'classes.dex'
-          sha256sum salida/Mi-YouTube-1.3.1-Universal.apk > salida/Mi-YouTube-1.3.1-Universal.sha256.txt
-          tar --exclude='.git' --exclude='*/build' -czf salida/Mi-YouTube-1.3.1-Universal-source.tar.gz MiYouTube-src NewPipeExtractor README.md scripts/customize_mi_youtube_130.py scripts/customize_mi_youtube_131.py scripts/fix_130_checkstyle.py
+          cp "$APK" salida/Mi-YouTube-1.3.2-Universal-TV-Safe-Area.apk
+          unzip -t salida/Mi-YouTube-1.3.2-Universal-TV-Safe-Area.apk >/dev/null
+          unzip -l salida/Mi-YouTube-1.3.2-Universal-TV-Safe-Area.apk | grep -q 'AndroidManifest.xml'
+          unzip -l salida/Mi-YouTube-1.3.2-Universal-TV-Safe-Area.apk | grep -q 'classes.dex'
+          sha256sum salida/Mi-YouTube-1.3.2-Universal-TV-Safe-Area.apk > salida/Mi-YouTube-1.3.2-Universal-TV-Safe-Area.sha256.txt
+          tar --exclude='.git' --exclude='*/build' -czf salida/Mi-YouTube-1.3.2-Universal-TV-Safe-Area-source.tar.gz MiYouTube-src NewPipeExtractor README.md scripts/customize_mi_youtube_130.py scripts/customize_mi_youtube_131.py scripts/customize_mi_youtube_132_safe_area.py scripts/fix_130_checkstyle.py
 
-      - name: Subir APK 1.3.1 Universal
+      - name: Subir APK 1.3.2
         uses: actions/upload-artifact@v4
         with:
-          name: Mi-YouTube-1.3.1-Universal-APK
+          name: Mi-YouTube-1.3.2-Universal-TV-Safe-Area-APK
           path: |
-            salida/Mi-YouTube-1.3.1-Universal.apk
-            salida/Mi-YouTube-1.3.1-Universal.sha256.txt
+            salida/Mi-YouTube-1.3.2-Universal-TV-Safe-Area.apk
+            salida/Mi-YouTube-1.3.2-Universal-TV-Safe-Area.sha256.txt
           retention-days: 30
 
-      - name: Subir codigo fuente 1.3.1 Universal
+      - name: Subir codigo fuente 1.3.2
         uses: actions/upload-artifact@v4
         with:
-          name: Mi-YouTube-1.3.1-Universal-source
-          path: salida/Mi-YouTube-1.3.1-Universal-source.tar.gz
+          name: Mi-YouTube-1.3.2-Universal-TV-Safe-Area-source
+          path: salida/Mi-YouTube-1.3.2-Universal-TV-Safe-Area-source.tar.gz
           retention-days: 30
