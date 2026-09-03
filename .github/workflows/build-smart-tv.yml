@@ -39,12 +39,10 @@ jobs:
                   for x in range(w):
                       r,g,b,a=15,15,15,255
                       if banner:
-                          # emblema a la izquierda y franja roja premium
                           if 22 < x < 132 and 35 < y < 145:
                               r,g,b=28,28,28
                           if 145 < x < 305 and 115 < y < 125:
                               r,g,b=255,0,51
-                          # triangulo play simplificado
                           if 55 < x < 105 and 60 < y < 120 and (x-55) > abs(y-90)*0.82:
                               r,g,b=255,255,255
                       else:
@@ -83,7 +81,7 @@ jobs:
       - name: Empaquetar LG webOS IPK
         run: |
           mkdir -p salida
-          ares-package smarttv/lg -o salida
+          ares-package --no-minify smarttv/lg -o salida
           IPK=$(find salida -name '*.ipk' | head -n 1)
           test -n "$IPK"
           cp "$IPK" salida/Mi-YouTube-TV-1.0.0-LG.ipk
