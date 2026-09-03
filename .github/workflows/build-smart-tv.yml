@@ -1,0 +1,135 @@
+name: Compilar Mi YouTube TV 1.0.0
+
+on:
+  push:
+    branches: [ build-mi-youtube-tv-1.0.0 ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Preparar fuentes compartidas
+        run: |
+          cp smarttv/common/index.html smarttv/lg/index.html
+          cp smarttv/common/styles.css smarttv/lg/styles.css
+          cp smarttv/common/app.js smarttv/lg/app.js
+          cp smarttv/common/platform.js smarttv/lg/platform.js
+          cp smarttv/common/index.html smarttv/samsung/index.html
+          cp smarttv/common/styles.css smarttv/samsung/styles.css
+          cp smarttv/common/app.js smarttv/samsung/app.js
+          cp smarttv/common/platform.js smarttv/samsung/platform.js
+
+      - name: Generar iconos y banner
+        shell: python
+        run: |
+          import struct, zlib
+          from pathlib import Path
+          def png(path,w,h,banner=False):
+              rows=[]
+              for y in range(h):
+                  row=bytearray([0])
+                  for x in range(w):
+                      r,g,b,a=15,15,15,255
+                      if banner:
+                          # emblema a la izquierda y franja roja premium
+                          if 22 < x < 132 and 35 < y < 145:
+                              r,g,b=28,28,28
+                          if 145 < x < 305 and 115 < y < 125:
+                              r,g,b=255,0,51
+                          # triangulo play simplificado
+                          if 55 < x < 105 and 60 < y < 120 and (x-55) > abs(y-90)*0.82:
+                              r,g,b=255,255,255
+                      else:
+                          cx,cy=w/2,h/2
+                          if abs(x-cx)<w*.36 and abs(y-cy)<h*.36:
+                              r,g,b=25,25,25
+                          if x>cx-w*.12 and x<cx+w*.24 and abs(y-cy)<(x-(cx-w*.12))*0.72:
+                              r,g,b=255,255,255
+                          if y>h*.72 and y<h*.79 and x>w*.18 and x<w*.82:
+                              r,g,b=255,0,51
+                      row.extend((r,g,b,a))
+                  rows.append(bytes(row))
+              raw=b''.join(rows)
+              def chunk(t,d):
+                  return struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d)&0xffffffff)
+              data=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',w,h,8,6,0,0,0))+chunk(b'IDAT',zlib.compress(raw,9))+chunk(b'IEND',b'')
+              Path(path).write_bytes(data)
+          png('smarttv/lg/icon.png',80,80)
+          png('smarttv/lg/largeIcon.png',130,130)
+          png('smarttv/lg/bgImage.png',320,180,True)
+          png('smarttv/samsung/icon.png',117,117)
+          png('smarttv/samsung/banner.png',320,180,True)
+
+      - name: Validar proyecto
+        run: |
+          test -f smarttv/lg/appinfo.json
+          test -f smarttv/samsung/config.xml
+          grep -q 'Mi YouTube TV' smarttv/lg/index.html
+          grep -q 'tv-samsung' smarttv/samsung/config.xml
+          python -m json.tool smarttv/lg/appinfo.json >/dev/null
+          python -c 'import xml.etree.ElementTree as E; E.parse("smarttv/samsung/config.xml")'
+
+      - name: Instalar webOS CLI
+        run: npm install -g @webos-tools/cli
+
+      - name: Empaquetar LG webOS IPK
+        run: |
+          mkdir -p salida
+          ares-package smarttv/lg -o salida
+          IPK=$(find salida -name '*.ipk' | head -n 1)
+          test -n "$IPK"
+          cp "$IPK" salida/Mi-YouTube-TV-1.0.0-LG.ipk
+          ares-package -i salida/Mi-YouTube-TV-1.0.0-LG.ipk
+          sha256sum salida/Mi-YouTube-TV-1.0.0-LG.ipk > salida/Mi-YouTube-TV-1.0.0-LG.sha256.txt
+
+      - name: Preparar Samsung Tizen WGT estructural
+        run: |
+          cd smarttv/samsung
+          zip -qr ../../salida/Mi-YouTube-TV-1.0.0-Samsung-UNSIGNED.wgt .
+          zip -qr ../../salida/Mi-YouTube-TV-1.0.0-Samsung-Tizen-project.zip .
+          cd ../..
+          unzip -t salida/Mi-YouTube-TV-1.0.0-Samsung-UNSIGNED.wgt >/dev/null
+          unzip -l salida/Mi-YouTube-TV-1.0.0-Samsung-UNSIGNED.wgt | grep -q config.xml
+          sha256sum salida/Mi-YouTube-TV-1.0.0-Samsung-UNSIGNED.wgt > salida/Mi-YouTube-TV-1.0.0-Samsung-UNSIGNED.sha256.txt
+          cat > salida/LEEME-SAMSUNG.txt <<'TXT'
+          IMPORTANTE: Samsung Tizen exige que toda aplicación instalada/ejecutada en un televisor físico esté firmada con certificados válidos. Para crear el certificado Samsung TV de distribuidor se necesita el DUID del televisor de destino. Por esa razón este WGT es un paquete estructural SIN FIRMAR y no se presenta como instalable universal. El proyecto incluido queda listo para firmarse con Tizen Studio / Samsung Certificate Extension cuando se disponga del DUID del TV.
+          TXT
+
+      - name: Empaquetar código fuente
+        run: |
+          tar -czf salida/Mi-YouTube-TV-1.0.0-source.tar.gz smarttv
+
+      - name: Subir LG
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mi-YouTube-TV-1.0.0-LG
+          path: |
+            salida/Mi-YouTube-TV-1.0.0-LG.ipk
+            salida/Mi-YouTube-TV-1.0.0-LG.sha256.txt
+          retention-days: 30
+
+      - name: Subir Samsung
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mi-YouTube-TV-1.0.0-Samsung
+          path: |
+            salida/Mi-YouTube-TV-1.0.0-Samsung-UNSIGNED.wgt
+            salida/Mi-YouTube-TV-1.0.0-Samsung-UNSIGNED.sha256.txt
+            salida/Mi-YouTube-TV-1.0.0-Samsung-Tizen-project.zip
+            salida/LEEME-SAMSUNG.txt
+          retention-days: 30
+
+      - name: Subir código fuente
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mi-YouTube-TV-1.0.0-source
+          path: salida/Mi-YouTube-TV-1.0.0-source.tar.gz
+          retention-days: 30
