@@ -1,0 +1,14 @@
+{
+  "id": "com.servicioia.miyoutubetv",
+  "version": "1.0.0",
+  "vendor": "Servicio IA",
+  "type": "web",
+  "main": "index.html",
+  "title": "Mi YouTube TV",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "bgImage": "bgImage.png",
+  "iconColor": "#0F0F0F",
+  "resolution": "1920x1080",
+  "disableBackHistoryAPI": true
+}
