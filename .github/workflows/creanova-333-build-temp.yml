@@ -1,0 +1,63 @@
+name: CreaNova 3.3.3 TEMP Windows Build
+
+on:
+  push:
+    branches: [creanova-333-public-build-temp]
+    paths: ['.github/workflows/creanova-333-build-temp.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct source ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $parts = Get-ChildItem 'creanova333/source.part*' | Sort-Object Name
+          Write-Host "Parts: $($parts.Count)"
+          $b64 = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
+          Write-Host "Base64 chars: $($b64.Length)"
+          [IO.File]::WriteAllBytes('source.zip',[Convert]::FromBase64String($b64))
+          $hash=(Get-FileHash source.zip -Algorithm SHA256).Hash.ToLower()
+          Write-Host "SHA256=$hash"
+          if ($hash -ne 'bf394d77913044544aca4277a65b278db3cf44dc52b063ec740331f6d83d0d00') { throw "SOURCE_HASH_MISMATCH" }
+          Expand-Archive source.zip creanova333build -Force
+          if (!(Test-Path 'creanova333build/creanova_studio.py')) { throw 'Falta creanova_studio.py' }
+
+      - name: Build Setup and Portable
+        shell: pwsh
+        working-directory: creanova333build
+        run: ./build_windows.ps1
+
+      - name: Validate EXE outputs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $setup='creanova333build/installer-output/CreaNova-Studio-3.3.3-Real-Full-Setup.exe'
+          $portable='creanova333build/portable-output/CreaNova-Studio-3.3.3-Real-Full-Portable.exe'
+          foreach($f in @($setup,$portable)) {
+            if (!(Test-Path $f)) { throw "No existe $f" }
+            $bytes=[IO.File]::ReadAllBytes($f)
+            if ($bytes.Length -lt 100000) { throw "EXE demasiado pequeno $f" }
+            if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "No es PE/MZ $f" }
+          }
+          Get-FileHash $setup -Algorithm SHA256
+          Get-FileHash $portable -Algorithm SHA256
+
+      - name: Upload EXEs
+        uses: actions/upload-artifact@v4
+        with:
+          name: CreaNova-Studio-3.3.3-Real-Full-Windows
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            creanova333build/installer-output/CreaNova-Studio-3.3.3-Real-Full-Setup.exe
+            creanova333build/portable-output/CreaNova-Studio-3.3.3-Real-Full-Portable.exe
