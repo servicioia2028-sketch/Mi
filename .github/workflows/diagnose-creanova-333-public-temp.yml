@@ -1,0 +1,92 @@
+name: Diagnose CreaNova Studio 3.3.3 Windows TEMP
+
+on:
+  push:
+    branches:
+      - creanova-333-public-build-temp
+    paths:
+      - '.github/workflows/diagnose-creanova-333-public-temp.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Reconstruct source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $parts=0..11 | ForEach-Object { "creanova333/source.part{0:D2}" -f $_ }
+          $b64=($parts | ForEach-Object { (Get-Content $_ -Raw).Trim() }) -join ''
+          [IO.File]::WriteAllBytes('source.zip',[Convert]::FromBase64String($b64))
+          $h=(Get-FileHash source.zip -Algorithm SHA256).Hash.ToLower()
+          Write-Host "SHA256=$h"
+          if($h -ne '3eb5acd3fe43b34ac6ccd61c4b11b6a820bb292c30f13f10685e080ab082e8cb'){throw 'Fuente reconstruida no coincide'}
+          Expand-Archive source.zip src -Force
+      - name: Install dependencies
+        shell: pwsh
+        working-directory: src
+        run: |
+          python -m pip install -r requirements.txt
+          if($LASTEXITCODE -ne 0){throw 'pip falló'}
+          if (!(Test-Path 'assets/creanova.ico') -and (Test-Path 'assets/creanova.ico.b64')) {
+            [IO.File]::WriteAllBytes('assets/creanova.ico',[Convert]::FromBase64String((Get-Content 'assets/creanova.ico.b64' -Raw)))
+          }
+      - name: Test Python source startup
+        shell: pwsh
+        working-directory: src
+        run: |
+          $ErrorActionPreference='Continue'
+          $out=Join-Path $env:RUNNER_TEMP 'source-out.txt'
+          $err=Join-Path $env:RUNNER_TEMP 'source-err.txt'
+          $p=Start-Process python -ArgumentList @('creanova_studio.py') -RedirectStandardOutput $out -RedirectStandardError $err -PassThru
+          Start-Sleep 8
+          $p.Refresh()
+          if($p.HasExited){
+            Write-Host "SOURCE_EXIT=$($p.ExitCode)"
+            if(Test-Path $out){Write-Host '--- SOURCE STDOUT ---';Get-Content $out}
+            if(Test-Path $err){Write-Host '--- SOURCE STDERR ---';Get-Content $err}
+            if($p.ExitCode -ne 0){exit 2}
+          } else {
+            Write-Host "SOURCE_RUNNING_PID=$($p.Id)"
+            Stop-Process -Id $p.Id -Force
+          }
+      - name: Build console diagnostic EXE
+        if: always()
+        shell: pwsh
+        working-directory: src
+        run: |
+          $version=(Resolve-Path 'version_info.txt').Path
+          $icon=(Resolve-Path 'assets/creanova.ico').Path
+          $main=(Resolve-Path 'creanova_studio.py').Path
+          python -m PyInstaller --noconfirm --clean --onedir --console --name 'CreaNova Studio Debug' --distpath 'debug-dist' --workpath 'debug-build' --specpath 'debug-spec' --version-file "$version" --icon "$icon" --collect-all fitz --collect-all cv2 --collect-all PIL --collect-all docx --collect-all pytesseract "$main"
+          if($LASTEXITCODE -ne 0){throw "PyInstaller debug falló: $LASTEXITCODE"}
+      - name: Run console diagnostic EXE
+        if: always()
+        shell: pwsh
+        working-directory: src
+        run: |
+          $ErrorActionPreference='Continue'
+          $exe=(Resolve-Path 'debug-dist/CreaNova Studio Debug/CreaNova Studio Debug.exe').Path
+          $out=Join-Path $env:RUNNER_TEMP 'debug-out.txt'
+          $err=Join-Path $env:RUNNER_TEMP 'debug-err.txt'
+          $p=Start-Process -FilePath $exe -RedirectStandardOutput $out -RedirectStandardError $err -PassThru
+          Start-Sleep 8
+          $p.Refresh()
+          if($p.HasExited){
+            Write-Host "DEBUG_EXIT=$($p.ExitCode)"
+            if(Test-Path $out){Write-Host '--- DEBUG STDOUT ---';Get-Content $out}
+            if(Test-Path $err){Write-Host '--- DEBUG STDERR ---';Get-Content $err}
+            if($p.ExitCode -ne 0){exit 3}
+          } else {
+            Write-Host "DEBUG_RUNNING_PID=$($p.Id)"
+            Stop-Process -Id $p.Id -Force
+          }
