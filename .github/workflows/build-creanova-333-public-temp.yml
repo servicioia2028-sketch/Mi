@@ -30,29 +30,94 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $parts = 0..11 | ForEach-Object { "creanova333/source.part{0:D2}" -f $_ }
-          foreach ($p in $parts) {
-            if (!(Test-Path $p)) { throw "Falta $p" }
-          }
+          foreach ($p in $parts) { if (!(Test-Path $p)) { throw "Falta $p" } }
           $b64 = ($parts | ForEach-Object { (Get-Content $_ -Raw).Trim() }) -join ''
           [IO.File]::WriteAllBytes('CreaNova-Studio-3.3.3-Real-Full-source.zip',[Convert]::FromBase64String($b64))
           $hash=(Get-FileHash 'CreaNova-Studio-3.3.3-Real-Full-source.zip' -Algorithm SHA256).Hash.ToLower()
           Write-Host "Source SHA256: $hash"
-          if ($hash -ne '3eb5acd3fe43b34ac6ccd61c4b11b6a820bb292c30f13f10685e080ab082e8cb') {
-            throw "SHA256 del fuente no coincide. Obtenido: $hash"
-          }
+          if ($hash -ne '3eb5acd3fe43b34ac6ccd61c4b11b6a820bb292c30f13f10685e080ab082e8cb') { throw "SHA256 del fuente no coincide. Obtenido: $hash" }
           New-Item -ItemType Directory -Force -Path 'src333' | Out-Null
           Expand-Archive 'CreaNova-Studio-3.3.3-Real-Full-source.zip' 'src333' -Force
-          foreach($f in @('creanova_studio.py','build_windows.ps1','installer.iss','requirements.txt','tests/smoke_test.py')) {
+          foreach($f in @('creanova_studio.py','installer.iss','requirements.txt','version_info.txt','tests/smoke_test.py')) {
             if (!(Test-Path (Join-Path 'src333' $f))) { throw "Falta archivo fuente: $f" }
           }
 
-      - name: Build Setup and Portable
+      - name: Install dependencies and run tests
         shell: pwsh
         working-directory: src333
         run: |
-          $ErrorActionPreference = 'Stop'
-          Set-ExecutionPolicy -Scope Process Bypass -Force
-          ./build_windows.ps1
+          $ErrorActionPreference='Stop'
+          python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { throw 'Falló actualización de pip' }
+          python -m pip install -r requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Falló instalación de dependencias' }
+          if (!(Test-Path 'assets/creanova.ico') -and (Test-Path 'assets/creanova.ico.b64')) {
+            [IO.File]::WriteAllBytes('assets/creanova.ico',[Convert]::FromBase64String((Get-Content 'assets/creanova.ico.b64' -Raw)))
+          }
+          python tests/smoke_test.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas de humo' }
+
+      - name: Build FULL and Portable with PyInstaller
+        shell: pwsh
+        working-directory: src333
+        run: |
+          $ErrorActionPreference='Stop'
+          $versionFile=(Resolve-Path 'version_info.txt').Path
+          $iconFile=(Resolve-Path 'assets/creanova.ico').Path
+          $mainFile=(Resolve-Path 'creanova_studio.py').Path
+
+          python -m PyInstaller --noconfirm --clean --onedir --windowed `
+            --name "CreaNova Studio" `
+            --distpath "dist" `
+            --workpath "build/full" `
+            --specpath "build/spec-full" `
+            --version-file "$versionFile" `
+            --icon "$iconFile" `
+            --collect-all fitz --collect-all cv2 --collect-all PIL --collect-all docx --collect-all pytesseract `
+            "$mainFile"
+          if ($LASTEXITCODE -ne 0) { throw "PyInstaller FULL falló con código $LASTEXITCODE" }
+
+          python -m PyInstaller --noconfirm --clean --onefile --windowed `
+            --name "CreaNova-Studio-3.3.3-Real-Full-Portable" `
+            --distpath "portable-output" `
+            --workpath "build/portable" `
+            --specpath "build/spec-portable" `
+            --version-file "$versionFile" `
+            --icon "$iconFile" `
+            --collect-all fitz --collect-all cv2 --collect-all PIL --collect-all docx --collect-all pytesseract `
+            "$mainFile"
+          if ($LASTEXITCODE -ne 0) { throw "PyInstaller Portable falló con código $LASTEXITCODE" }
+
+      - name: Build Inno Setup installer
+        shell: pwsh
+        working-directory: src333
+        run: |
+          $ErrorActionPreference='Stop'
+          function Find-Iscc {
+            $cmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+            if ($cmd) { return $cmd.Source }
+            $candidates = @(
+              "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "C:\ProgramData\chocolatey\bin\ISCC.exe",
+              "C:\ProgramData\chocolatey\bin\iscc.exe"
+            )
+            foreach($p in $candidates) { if ($p -and (Test-Path $p)) { return $p } }
+            $found = Get-ChildItem 'C:\Program Files*\Inno Setup*\ISCC.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) { return $found.FullName }
+            return $null
+          }
+          $iscc=Find-Iscc
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1641 -and $LASTEXITCODE -ne 3010) { throw "Chocolatey/Inno Setup falló: $LASTEXITCODE" }
+            $env:Path += ';C:\ProgramData\chocolatey\bin'
+            $iscc=Find-Iscc
+          }
+          if (-not $iscc) { throw 'No se encontró ISCC.exe después de instalar Inno Setup' }
+          Write-Host "ISCC: $iscc"
+          & $iscc 'installer.iss'
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup falló con código $LASTEXITCODE" }
 
       - name: Validate Windows executables
         shell: pwsh
@@ -64,25 +129,58 @@ jobs:
           foreach($f in @($setup,$portable,$main)) {
             if (!(Test-Path $f)) { throw "No existe: $f" }
             $bytes=[IO.File]::ReadAllBytes($f)
-            if ($bytes.Length -lt 100000) { throw "Salida demasiado pequena: $f ($($bytes.Length) bytes)" }
+            if ($bytes.Length -lt 100000) { throw "Salida demasiado pequeña: $f ($($bytes.Length) bytes)" }
             if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "No es ejecutable Windows PE/MZ: $f" }
             Write-Host "$f -> $($bytes.Length) bytes, PE/MZ OK"
           }
 
-      - name: Windows startup smoke test
+      - name: Windows startup smoke test FULL and Portable
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $exe=(Resolve-Path 'src333/dist/CreaNova Studio/CreaNova Studio.exe').Path
-          $p=Start-Process -FilePath $exe -PassThru
+          function Test-Startup([string]$exe,[string]$label) {
+            $resolved=(Resolve-Path $exe).Path
+            Write-Host "Probando inicio de $label: $resolved"
+            $p=Start-Process -FilePath $resolved -PassThru
+            Start-Sleep -Seconds 8
+            $p.Refresh()
+            if ($p.HasExited) {
+              if ($p.ExitCode -ne 0) { throw "$label terminó al iniciar con código $($p.ExitCode)" }
+              Write-Host "$label inició y terminó limpiamente."
+            } else {
+              Write-Host "$label permanece ejecutándose tras 8 segundos. PID $($p.Id). Inicio OK."
+              Stop-Process -Id $p.Id -Force
+            }
+          }
+          Test-Startup 'src333/dist/CreaNova Studio/CreaNova Studio.exe' 'FULL'
+          Test-Startup 'src333/portable-output/CreaNova-Studio-3.3.3-Real-Full-Portable.exe' 'PORTABLE'
+
+      - name: Silent install Setup and test installed app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $setup=(Resolve-Path 'src333/installer-output/CreaNova-Studio-3.3.3-Real-Full-Setup.exe').Path
+          $installDir=Join-Path $env:RUNNER_TEMP 'CreaNova-Studio-3.3.3-Install-Test'
+          if (Test-Path $installDir) { Remove-Item $installDir -Recurse -Force }
+          $args=@('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/DIR=$installDir")
+          $p=Start-Process -FilePath $setup -ArgumentList $args -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Setup silencioso falló con código $($p.ExitCode)" }
+          $installed=Join-Path $installDir 'CreaNova Studio.exe'
+          if (!(Test-Path $installed)) { throw "Setup terminó pero no existe $installed" }
+          $app=Start-Process -FilePath $installed -PassThru
           Start-Sleep -Seconds 8
-          $p.Refresh()
-          if ($p.HasExited) {
-            if ($p.ExitCode -ne 0) { throw "CreaNova termino al iniciar con codigo $($p.ExitCode)" }
-            Write-Host 'CreaNova inicio y termino limpiamente.'
+          $app.Refresh()
+          if ($app.HasExited) {
+            if ($app.ExitCode -ne 0) { throw "CreaNova instalada terminó con código $($app.ExitCode)" }
+            Write-Host 'CreaNova instalada inició y terminó limpiamente.'
           } else {
-            Write-Host "CreaNova permanece ejecutandose tras 8 segundos. PID $($p.Id). Inicio Windows OK."
-            Stop-Process -Id $p.Id -Force
+            Write-Host "CreaNova instalada permanece ejecutándose tras 8 segundos. PID $($app.Id). Instalación e inicio OK."
+            Stop-Process -Id $app.Id -Force
+          }
+          $unins=Join-Path $installDir 'unins000.exe'
+          if (Test-Path $unins) {
+            $u=Start-Process -FilePath $unins -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+            Write-Host "Desinstalador finalizó con código $($u.ExitCode)"
           }
 
       - name: Package and hashes
