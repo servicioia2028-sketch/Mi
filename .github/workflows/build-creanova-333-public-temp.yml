@@ -1,0 +1,119 @@
+name: CreaNova Studio 3.3.3 Real Full Windows TEMP
+
+on:
+  push:
+    branches:
+      - creanova-333-public-build-temp
+    paths:
+      - 'creanova333/**'
+      - '.github/workflows/build-creanova-333-public-temp.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Reconstruct and verify source ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $parts = 0..11 | ForEach-Object { "creanova333/source.part{0:D2}" -f $_ }
+          foreach ($p in $parts) {
+            if (!(Test-Path $p)) { throw "Falta $p" }
+          }
+          $b64 = ($parts | ForEach-Object { (Get-Content $_ -Raw).Trim() }) -join ''
+          [IO.File]::WriteAllBytes('CreaNova-Studio-3.3.3-Real-Full-source.zip',[Convert]::FromBase64String($b64))
+          $hash=(Get-FileHash 'CreaNova-Studio-3.3.3-Real-Full-source.zip' -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Source SHA256: $hash"
+          if ($hash -ne '3eb5acd3fe43b34ac6ccd61c4b11b6a820bb292c30f13f10685e080ab082e8cb') {
+            throw "SHA256 del fuente no coincide. Obtenido: $hash"
+          }
+          New-Item -ItemType Directory -Force -Path 'src333' | Out-Null
+          Expand-Archive 'CreaNova-Studio-3.3.3-Real-Full-source.zip' 'src333' -Force
+          foreach($f in @('creanova_studio.py','build_windows.ps1','installer.iss','requirements.txt','tests/smoke_test.py')) {
+            if (!(Test-Path (Join-Path 'src333' $f))) { throw "Falta archivo fuente: $f" }
+          }
+
+      - name: Build Setup and Portable
+        shell: pwsh
+        working-directory: src333
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-ExecutionPolicy -Scope Process Bypass -Force
+          ./build_windows.ps1
+
+      - name: Validate Windows executables
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $setup='src333/installer-output/CreaNova-Studio-3.3.3-Real-Full-Setup.exe'
+          $portable='src333/portable-output/CreaNova-Studio-3.3.3-Real-Full-Portable.exe'
+          $main='src333/dist/CreaNova Studio/CreaNova Studio.exe'
+          foreach($f in @($setup,$portable,$main)) {
+            if (!(Test-Path $f)) { throw "No existe: $f" }
+            $bytes=[IO.File]::ReadAllBytes($f)
+            if ($bytes.Length -lt 100000) { throw "Salida demasiado pequena: $f ($($bytes.Length) bytes)" }
+            if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "No es ejecutable Windows PE/MZ: $f" }
+            Write-Host "$f -> $($bytes.Length) bytes, PE/MZ OK"
+          }
+
+      - name: Windows startup smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=(Resolve-Path 'src333/dist/CreaNova Studio/CreaNova Studio.exe').Path
+          $p=Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 8
+          $p.Refresh()
+          if ($p.HasExited) {
+            if ($p.ExitCode -ne 0) { throw "CreaNova termino al iniciar con codigo $($p.ExitCode)" }
+            Write-Host 'CreaNova inicio y termino limpiamente.'
+          } else {
+            Write-Host "CreaNova permanece ejecutandose tras 8 segundos. PID $($p.Id). Inicio Windows OK."
+            Stop-Process -Id $p.Id -Force
+          }
+
+      - name: Package and hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Compress-Archive -Path 'src333/dist/CreaNova Studio/*' -DestinationPath 'CreaNova-Studio-3.3.3-Real-Full-Carpeta-Portable.zip' -Force
+          $files=@(
+            'src333/installer-output/CreaNova-Studio-3.3.3-Real-Full-Setup.exe',
+            'src333/portable-output/CreaNova-Studio-3.3.3-Real-Full-Portable.exe',
+            'CreaNova-Studio-3.3.3-Real-Full-Carpeta-Portable.zip',
+            'CreaNova-Studio-3.3.3-Real-Full-source.zip'
+          )
+          $lines=@()
+          foreach($f in $files){
+            $h=Get-FileHash $f -Algorithm SHA256
+            $lines += "$($h.Hash.ToLower())  $([IO.Path]::GetFileName($f))"
+          }
+          $lines | Set-Content 'CreaNova-Studio-3.3.3-Real-Full-SHA256.txt' -Encoding ASCII
+          Get-Content 'CreaNova-Studio-3.3.3-Real-Full-SHA256.txt'
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: CreaNova-Studio-3.3.3-Real-Full-Windows
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            src333/installer-output/CreaNova-Studio-3.3.3-Real-Full-Setup.exe
+            src333/portable-output/CreaNova-Studio-3.3.3-Real-Full-Portable.exe
+            CreaNova-Studio-3.3.3-Real-Full-Carpeta-Portable.zip
+            CreaNova-Studio-3.3.3-Real-Full-source.zip
+            CreaNova-Studio-3.3.3-Real-Full-SHA256.txt
