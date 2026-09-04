@@ -1,0 +1,12 @@
+name: CreaNova 3.3.3 public Windows runner test
+on:
+  push:
+    branches: [creanova-333-runner-test]
+    paths: ['.github/workflows/creanova-333-runner-test.yml']
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: Check runner
+        shell: pwsh
+        run: Write-Host 'WINDOWS RUNNER OK'
